@@ -788,7 +788,7 @@ module.exports = class TicketManager {
 				}).catch(this.client.log.error);
 			}
 
-			if (working && process.env.PUBLIC_BOT !== 'true') {
+			if (working && process.env.OFFLINE_STAFF_NOTICE === 'true') {
 				let online = 0;
 				for (const [, member] of channel.members) {
 					if (member.user.bot) continue;

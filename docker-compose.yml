@@ -52,6 +52,7 @@ services:
       HTTP_TRUST_PROXY: "false" # set to true if you're using a reverse proxy
       INVALIDATE_TOKENS:
       OVERRIDE_ARCHIVE: null
+      OFFLINE_STAFF_NOTICE: "false"
       PUBLIC_BOT: "false"
       PUBLISH_COMMANDS: "false"
       SUPER: 319467558166069248 # comma-separated list of discord user IDs with superuser access to change bot settings for all guilds the bot is in, regardless of the users permissions

@@ -231,7 +231,7 @@ module.exports = class extends Listener {
 					}
 				}
 
-				if (process.env.PUBLIC_BOT !== 'true' &&
+				if (process.env.OFFLINE_STAFF_NOTICE === 'true' &&
 					!message.author.bot &&
 					!await isStaff(message.channel.guild, message.author.id)
 				) {
