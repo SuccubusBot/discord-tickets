@@ -135,6 +135,15 @@ or contribute in any other way, please read the [contributing guidelines](https:
 
 [![Translation status](https://hosted.weblate.org/widgets/discord-tickets/-/open-graph.png)](https://hosted.weblate.org/engage/discord-tickets/)
 
+## Ticket archives on the contrib branch
+
+- Ticket lists retain topic previews and cache up to 512 decrypted topics in memory. Changed topics use new cache entries. The first uncached page after a restart still requires decryption.
+- With guild archiving enabled, new messages retain their content, embeds, attachments, subsequent revisions, and deletion markers (including bulk deletions). History is stored in the existing encrypted message payload. A MySQL migration expands that column to `LONGTEXT`; PostgreSQL and SQLite already support larger text values.
+- Attachment files are encrypted with `ENCRYPTION_KEY` under `user/attachments/`. Persist and back up the entire `user` directory along with the database and encryption key. In Docker/Dokploy, mount persistent storage at `/home/container/user`; the provided Compose file already does this.
+- Downloads require the transcript's guild admin permissions. Files are streamed with a 512 MiB limit and a 60-second download deadline. Failed downloads are logged and retried on later message updates or when an administrator opens the attachment.
+- Older archives contain only Discord attachment URLs. Opening one attempts to save it, refreshing the URL from its original message if necessary. Files whose source is already unavailable, edits made before this change, and events missed while the bot was offline cannot be reconstructed.
+- Attachment files remain on disk when messages are deleted. Database-only exports do not include these files; include `user/attachments/` in backups.
+
 ## 😕 Support
 
 [![Discord](https://discordapp.com/api/guilds/451745464480432129/widget.png?style=banner4)](https://lnk.earth/discord)

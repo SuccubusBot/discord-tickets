@@ -25,12 +25,12 @@ module.exports = class extends Listener {
 				newMessage = await newMessage.fetch();
 			} catch (error) {
 				client.log.error(error);
+				return;
 			}
 		}
 
 		if (!newMessage.guild) return;
 		if (newMessage.flags.has(MessageFlags.Ephemeral)) return;
-		if (!newMessage.editedAt) return;
 
 		const ticket = await client.prisma.ticket.findUnique({
 			include: { guild: true },
@@ -40,6 +40,10 @@ module.exports = class extends Listener {
 
 		if (ticket.guild.archive) {
 			try {
+				if (!oldMessage.partial) {
+					const archived = await client.prisma.archivedMessage.findUnique({ where: { id: newMessage.id } });
+					if (!archived) await client.tickets.archiver.saveMessage(ticket.id, oldMessage);
+				}
 				await client.tickets.archiver.saveMessage(ticket.id, newMessage);
 			} catch (error) {
 				client.log.warn('Failed to update archived message', newMessage.id);
@@ -48,7 +52,7 @@ module.exports = class extends Listener {
 			}
 		}
 
-		if (newMessage.author.id === client.user.id) return;
+		if (newMessage.author.id === client.user.id || !newMessage.editedAt || oldMessage.content === newMessage.content) return;
 
 		await logMessageEvent(this.client, {
 			action: 'update',

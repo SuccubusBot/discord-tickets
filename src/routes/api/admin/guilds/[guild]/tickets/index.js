@@ -1,5 +1,19 @@
 const { pools } = require('../../../../../../lib/threads');
 const { crypto } = pools;
+const topics = new Map();
+
+function decryptTopic(value) {
+	if (!topics.has(value)) {
+		// ponytail: bounded process-local cache; cold pages still pay Cryptr's key derivation cost.
+		if (topics.size >= 512) topics.delete(topics.keys().next().value);
+		const pending = Promise.resolve(crypto.queue(w => w.decrypt(value))).catch(error => {
+			if (topics.get(value) === pending) topics.delete(value);
+			throw error;
+		});
+		topics.set(value, pending);
+	}
+	return topics.get(value);
+}
 
 module.exports.get = fastify => ({
 	handler: async req => {
@@ -28,7 +42,7 @@ module.exports.get = fastify => ({
 		if (query.after) tickets.reverse();
 		return Promise.all(
 			tickets.map(async ticket => {
-				ticket.topic &&= await crypto.queue(w => w.decrypt(ticket.topic));
+				ticket.topic &&= await decryptTopic(ticket.topic);
 				return ticket;
 			}),
 		);

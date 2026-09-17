@@ -23,7 +23,7 @@ model ArchivedChannel {
 model ArchivedMessage {
     author    ArchivedUser @relation(fields: [ticketId, authorId], references: [ticketId, userId], onDelete: Cascade)
     authorId  String       @db.VarChar(19)
-    content   String       @db.Text
+    content   String       @db.LongText
     createdAt DateTime     @default(now())
     deleted   Boolean      @default(false)
     edited    Boolean      @default(false)

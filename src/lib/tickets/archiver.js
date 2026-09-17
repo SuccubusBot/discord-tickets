@@ -1,4 +1,5 @@
 const { pools } = require('../threads');
+const { saveAttachment } = require('./attachments');
 
 const { crypto } = pools;
 
@@ -13,6 +14,41 @@ module.exports = class TicketArchiver {
 	constructor(client) {
 		/** @type {import("client")} */
 		this.client = client;
+		this.pending = new Map();
+	}
+
+	queue(id, run) {
+		const task = (this.pending.get(id) || Promise.resolve()).catch(() => {}).then(run);
+		this.pending.set(id, task);
+		return task.finally(() => {
+			if (this.pending.get(id) === task) this.pending.delete(id);
+		});
+	}
+
+	saveMessage(ticketId, message, external = false) {
+		// Snapshot before queued work: Discord may mutate the cached message during an edit.
+		const snapshot = {
+			attachments: [...message.attachments.values()].map(attachment => attachment.toJSON?.() || { ...attachment }),
+			components: message.components.map(component => component.toJSON()),
+			content: message.content,
+			editedAt: message.editedAt?.toISOString() || null,
+			embeds: message.embeds.map(embed => embed.toJSON()),
+			reference: message.reference?.messageId ?? null,
+		};
+		return this.queue(message.id, () => this.persistMessage(ticketId, message, external, snapshot));
+	}
+
+	markDeleted(ticketId, message) {
+		return this.queue(message.id, async () => {
+			if (process.env.OVERRIDE_ARCHIVE === 'false') return;
+			await this.client.prisma.archivedMessage.updateMany({
+				data: { deleted: true },
+				where: {
+					id: message.id,
+					ticketId,
+				},
+			});
+		});
 	}
 
 	/** Add or update a message
@@ -21,7 +57,7 @@ module.exports = class TicketArchiver {
 	 * @param {boolean?} external
 	 * @returns {import("@prisma/client").ArchivedMessage|boolean}
 	 */
-	async saveMessage(ticketId, message, external = false) {
+	async persistMessage(ticketId, message, external, snapshot) {
 		if (process.env.OVERRIDE_ARCHIVE === 'false') return false;
 
 		if (!message.member) {
@@ -39,7 +75,7 @@ module.exports = class TicketArchiver {
 		try {
 			const queries = [];
 
-			members.add(message.member);
+			if (message.member) members.add(message.member);
 
 			for (const member of members) {
 				roles.add(hoistedRole(member));
@@ -118,18 +154,45 @@ module.exports = class TicketArchiver {
 				);
 			}
 
+			if (!message.member) {
+				const user = message.author;
+				const data = {
+					avatar: user.avatar,
+					bot: user.bot,
+					discriminator: user.discriminator,
+					username: await crypto.queue(w => w.encrypt(user.username)),
+				};
+				queries.push(this.client.prisma.archivedUser.upsert({
+					create: {
+						...data,
+						ticketId,
+						userId: user.id,
+					},
+					update: data,
+					where: {
+						ticketId_userId: {
+							ticketId,
+							userId: user.id,
+						},
+					},
+				}));
+			}
+
+			const previous = await this.client.prisma.archivedMessage.findUnique({ where: { id: message.id } });
+			if (previous?.content) {
+				const {
+					revisions = [], ...original
+				} = JSON.parse(await crypto.queue(w => w.decrypt(previous.content)));
+				snapshot.revisions = revisions;
+				const {
+					revisions: _ignored, ...current
+				} = snapshot;
+				if (JSON.stringify(original) !== JSON.stringify(current)) snapshot.revisions.push(original);
+			}
 			const data = {
-				content: await crypto.queue(w => w.encrypt(
-					JSON.stringify({
-						attachments: [...message.attachments.values()],
-						components: [...message.components.values()],
-						content: message.content,
-						embeds: message.embeds.map(embed => ({ ...embed })),
-						reference: message.reference?.messageId ?? null,
-					}),
-				)),
+				content: await crypto.queue(w => w.encrypt(JSON.stringify(snapshot))),
 				createdAt: message.createdAt,
-				edited: !!message.editedAt,
+				edited: !!snapshot.editedAt || previous?.edited || false,
 				external,
 			};
 
@@ -147,7 +210,15 @@ module.exports = class TicketArchiver {
 				}),
 			);
 
-			return await this.client.prisma.$transaction(queries);
+			const result = await this.client.prisma.$transaction(queries);
+			for (const attachment of snapshot.attachments) {
+				try {
+					await saveAttachment(message.guild.id, ticketId, message.id, attachment);
+				} catch (error) {
+					this.client.log.warn('Failed to store attachment %s on message %s: %s', attachment.id, message.id, error.message);
+				}
+			}
+			return result;
 		} catch (error) {
 			this.client.log.error('Failed to archive message %s', message.id);
 			this.client.log.error(error);

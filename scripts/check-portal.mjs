@@ -16,7 +16,32 @@ for (const id of ['/(default)/[guild]/tickets', '/(default)/transcripts/[guild]/
 const guildId = '997372719555412008';
 const ticketId = '997372719555412009';
 const ticket = {
-	archivedMessages: [],
+	archivedMessages: [{
+		authorId: 'test-user',
+		content: JSON.stringify({
+			attachments: [{
+				id: '997372719555412011',
+				name: 'evidence.png',
+				url: 'https://cdn.discordapp.com/expired',
+			}],
+			content: 'Updated message',
+			embeds: [{
+				data: {
+					description: 'Archived embed description',
+					fields: [{
+						name: 'Archive field',
+						value: 'Archive value',
+					}],
+					title: 'Legacy embed title',
+				},
+			}],
+			revisions: [{ content: 'Original message text' }],
+		}),
+		createdAt: '2026-09-17T00:00:00Z',
+		deleted: true,
+		edited: true,
+		id: '997372719555412010',
+	}],
 	archivedRoles: [],
 	archivedUsers: [],
 	createdAt: '2026-09-17T00:00:00Z',
@@ -31,6 +56,7 @@ const tickets = Array.from({ length: 60 }, (_, index) => ({
 	id: String(BigInt(ticketId) + BigInt(index)),
 	number: index + 1,
 	open: index % 2 === 1,
+	topic: `Test ticket ${index + 1}`,
 }));
 const fixtures = {
 	'/api/client': { username: 'Test bot' },
@@ -50,11 +76,13 @@ require.cache[require.resolve('../src/lib/threads')] = {
 	exports: {
 		pools: {
 			crypto: {
-				queue: async run => run({
-					decrypt: value => {
-						decrypted++;
-						return value.replace('encrypted:', '');
-					},
+				queue: run => ({
+					then: resolve => resolve(run({
+						decrypt: value => {
+							decrypted++;
+							return value.replace('encrypted:', '');
+						},
+					})),
 				}),
 			},
 		},
@@ -140,6 +168,11 @@ try {
 		assert.match(body, /<main\b/, `${path}: page content must render before JavaScript runs`);
 		const number = path.includes('transcripts') ? 1 : path.includes('before=36') ? 35 : path.includes('status=closed') ? 59 : 60;
 		assert.ok(body.includes(`Ticket #${number}`), `${path}: ticket content is missing`);
+		if (path.includes('transcripts')) {
+			for (const text of ['Legacy embed title', 'Archived embed description', 'Archive field', 'Archive value', 'Original message text', 'Edit history', '/messages/997372719555412010/attachments/997372719555412011']) {
+				assert.ok(body.includes(text), `Missing archived content: ${text}`);
+			}
+		}
 		assert.ok(decrypted <= 26, `${path}: too many topics decrypted`);
 		assert.ok(requests.includes(`/api/guilds/${guildId}`), path);
 		assert.ok(requests.some(url => url.startsWith(`/api/admin/guilds/${guildId}/tickets`)), path);
@@ -159,6 +192,19 @@ try {
 		url: `/api/admin/guilds/${guildId}/tickets`,
 	});
 	assert.equal(firstPage.json().length, 25, 'Default API requests must be bounded');
+	decrypted = 0;
+	await api.inject({
+		headers: { cookie: 'token=test-session' },
+		url: `/api/admin/guilds/${guildId}/tickets`,
+	});
+	assert.equal(decrypted, 0, 'Repeated listing requests must reuse decrypted topics');
+	tickets[59].topic = 'Changed topic';
+	const changed = await api.inject({
+		headers: { cookie: 'token=test-session' },
+		url: `/api/admin/guilds/${guildId}/tickets`,
+	});
+	assert.equal(changed.json()[0].topic, 'Changed topic', 'Changing ciphertext must invalidate the topic cache');
+	assert.equal(decrypted, 1);
 } finally {
 	server.closeAllConnections();
 	await new Promise(resolve => server.close(resolve));

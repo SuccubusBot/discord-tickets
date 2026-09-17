@@ -3,7 +3,7 @@
 FROM node:22-alpine3.20 AS portal
 
 # Update this commit when promoting changes from the portal's contrib branch.
-ARG PORTAL_COMMIT=41e5a97bed3224c2c8d6e4eb56580ca0e3e292fa
+ARG PORTAL_COMMIT=dd11e9ca663e030c7f3a4de0425e93b8c6ac95b1
 WORKDIR /portal
 ADD https://codeload.github.com/SuccubusBot/discord-tickets-portal/tar.gz/${PORTAL_COMMIT} /tmp/portal.tar.gz
 RUN tar -xzf /tmp/portal.tar.gz --strip-components=1 \
@@ -55,7 +55,7 @@ WORKDIR /home/container
 
 COPY --from=builder --chown=container:container --chmod=777 /build /app
 
-RUN node /app/scripts/check-stats.js && node /app/scripts/check-portal.mjs
+RUN node /app/scripts/check-stats.js && node /app/scripts/check-archive.js && node /app/scripts/check-portal.mjs
 
 ENTRYPOINT [ "/app/scripts/start.sh" ]
 HEALTHCHECK --interval=15s --timeout=5s --start-period=60s \

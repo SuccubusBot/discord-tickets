@@ -33,17 +33,11 @@ module.exports = class extends Listener {
 
 		let content = message.cleanContent;
 
-		const logEvent = (await message.guild.fetchAuditLogs({
-			limit: 1,
-			type: AuditLogEvent.MessageDelete,
-		})).entries.first();
-
 		if (ticket.guild.archive) {
 			try {
-				await client.prisma.archivedMessage.update({
-					data: { deleted: true },
-					where: { id: message.id },
-				});
+				const existing = await client.prisma.archivedMessage.findUnique({ where: { id: message.id } });
+				if (!existing && !message.partial) await client.tickets.archiver.saveMessage(ticket.id, message);
+				await client.tickets.archiver.markDeleted(ticket.id, message);
 				const archived = await client.prisma.archivedMessage.findUnique({ where: { id: message.id } });
 				if (archived?.content) {
 					if (!content) {
@@ -61,6 +55,13 @@ module.exports = class extends Listener {
 			}
 		}
 
+		const logEvent = await message.guild.fetchAuditLogs({
+			limit: 1,
+			type: AuditLogEvent.MessageDelete,
+		}).then(log => log.entries.first()).catch(error => {
+			client.log.warn('Could not read deletion audit log: %s', error.message);
+		});
+
 		let {
 			executor,
 			target,
@@ -77,7 +78,7 @@ module.exports = class extends Listener {
 			}
 		}
 
-		if (message.author.id !== client.user.id && !message.flags.has(MessageFlags.Ephemeral)) {
+		if (message.author && message.author.id !== client.user.id && !message.flags?.has(MessageFlags.Ephemeral)) {
 			await logMessageEvent(this.client, {
 				action: 'delete',
 				diff: {
