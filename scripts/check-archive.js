@@ -167,6 +167,100 @@ const message = {
 			method: 'GET',
 			url: '/api/admin/guilds/:guild/tickets/:ticket/messages/:message/attachments/:attachment',
 		});
+		const { Client } = require('discord.js');
+		const recoveryClient = new Client({ intents: [] });
+		// Seed a real Discord.js guild without logging into Discord.
+		// eslint-disable-next-line no-underscore-dangle
+		const recoveryGuild = recoveryClient.guilds._add({
+			id: guild,
+			name: 'Test guild',
+		});
+		recoveryGuild.members.fetch = message.guild.members.fetch;
+		recoveryClient.log = client.log;
+		const openingId = '997372719555412088';
+		const recoveryTicket = {
+			guild: { archive: true },
+			id: ticket,
+			openingMessageId: openingId,
+		};
+		recoveryClient.prisma = {
+			...client.prisma,
+			ticket: { findUnique: async ({ where }) => where.guildId === guild && where.id === ticket ? recoveryTicket : null },
+		};
+		recoveryClient.tickets = { archiver: new Archiver(recoveryClient) };
+		let discordReads = 0;
+		const readDiscord = async (path, { signal }) => {
+			discordReads++;
+			assert.ok(signal instanceof AbortSignal);
+			return path.endsWith(`/messages/${openingId}`) ? {
+				attachments: [],
+				author: {
+					bot: true,
+					discriminator: '0',
+					id: message.author.id,
+					username: 'Test bot',
+				},
+				channel_id: ticket,
+				components: [{
+					components: [{
+						custom_id: 'close',
+						label: 'Close ticket',
+						style: 4,
+						type: 2,
+					}],
+					type: 1,
+				}],
+				content: '',
+				embeds: [{ description: 'Recovered opening embed' }],
+				id: openingId,
+				type: 0,
+			} : {
+				guild_id: guild,
+				id: ticket,
+			};
+		};
+		recoveryClient.rest.get = readDiscord;
+		api.route({
+			...require('../src/routes/api/admin/guilds/[guild]/tickets/[ticket]/recover').post(api),
+			config: { client: recoveryClient },
+			method: 'POST',
+			url: '/api/admin/guilds/:guild/tickets/:ticket/recover',
+		});
+		const recover = (headers = { cookie: 'admin' }, guildId = guild) => api.inject({
+			headers,
+			method: 'POST',
+			url: `/api/admin/guilds/${guildId}/tickets/${ticket}/recover`,
+		});
+		assert.equal((await recover({})).statusCode, 401);
+		assert.equal((await recover({ cookie: 'member' })).statusCode, 403);
+		assert.equal((await recover(undefined, '997372719555412099')).statusCode, 404);
+		recoveryTicket.guild.archive = false;
+		assert.equal((await recover()).statusCode, 409);
+		recoveryTicket.guild.archive = true;
+		process.env.OVERRIDE_ARCHIVE = 'false';
+		assert.equal((await recover()).statusCode, 409);
+		delete process.env.OVERRIDE_ARCHIVE;
+		assert.equal(discordReads, 0, 'Denied requests must not access Discord');
+		recoveryClient.rest.get = async () => ({ guild_id: '997372719555412099' });
+		assert.equal((await recover()).statusCode, 404);
+		recoveryClient.rest.get = async () => {
+			throw Object.assign(new Error('Gone'), { code: 10008 });
+		};
+		assert.equal((await recover()).statusCode, 410);
+		recoveryClient.rest.get = async () => {
+			throw new Error('Timeout');
+		};
+		assert.equal((await recover()).statusCode, 503);
+		recoveryClient.rest.get = readDiscord;
+		assert.equal((await recover()).statusCode, 204);
+		const recovered = JSON.parse(records.get(openingId).content);
+		assert.equal(recovered.embeds[0].description, 'Recovered opening embed');
+		assert.equal(recovered.components[0].components[0].label, 'Close ticket');
+		recoveryClient.rest.get = async () => {
+			throw new Error('Must not overwrite an existing archive');
+		};
+		assert.equal((await recover()).statusCode, 204);
+		assert.deepEqual(JSON.parse(records.get(openingId).content), recovered);
 		const url = `/api/admin/guilds/${guild}/tickets/${ticket}/messages/${messageId}/attachments/${fileId}`;
 		assert.equal((await api.inject({ url })).statusCode, 401);
 		assert.equal((await api.inject({

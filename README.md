@@ -137,6 +137,8 @@ or contribute in any other way, please read the [contributing guidelines](https:
 
 ## Ticket archives on the contrib branch
 
+- If an older transcript is missing its opening message, select **Recover opening message**. This saves the current message, including embeds and buttons, when it still exists in Discord. Deleted originals and earlier unsaved versions cannot be recovered.
+
 - Ticket lists retain topic previews and cache up to 512 decrypted topics in memory. Changed topics use new cache entries. The first uncached page after a restart still requires decryption.
 - With guild archiving enabled, new messages retain their content, embeds, attachments, subsequent revisions, and deletion markers (including bulk deletions). History is stored in the existing encrypted message payload. A MySQL migration expands that column to `LONGTEXT`; PostgreSQL and SQLite already support larger text values.
 - Attachment files are encrypted with `ENCRYPTION_KEY` under `user/attachments/`. Persist and back up the entire `user` directory along with the database and encryption key. In Docker/Dokploy, mount persistent storage at `/home/container/user`; the provided Compose file already does this.

@@ -58,13 +58,32 @@ const ticket = {
 		deleted: true,
 		edited: true,
 		id: '997372719555412010',
+	}, {
+		authorId: 'test-user',
+		content: JSON.stringify({
+			attachments: [],
+			components: [],
+			content: '',
+			embeds: [],
+			reference: '997372719555412088',
+		}),
+		createdAt: '2026-09-17T00:00:01Z',
+		id: '997372719555412089',
 	}],
-	archivedRoles: [],
-	archivedUsers: [],
+	archivedRoles: [{
+		colour: '000000',
+		roleId: 'test-role',
+	}],
+	archivedUsers: [{
+		roleId: 'test-role',
+		userId: 'test-user',
+		username: 'Test user',
+	}],
 	createdAt: '2026-09-17T00:00:00Z',
 	id: ticketId,
 	number: 1,
 	open: false,
+	openingMessageId: '997372719555412088',
 	questionAnswers: [],
 	topic: 'Test ticket',
 };
@@ -186,6 +205,9 @@ try {
 		const number = path.includes('transcripts') ? 1 : path.includes('before=36') ? 35 : path.includes('status=closed') ? 59 : 60;
 		assert.ok(body.includes(`Ticket #${number}`), `${path}: ticket content is missing`);
 		if (path.includes('transcripts')) {
+			assert.ok(body.includes('Recover opening message'));
+			assert.ok(body.includes('No text, embeds, or buttons were saved for this message.'));
+			assert.doesNotMatch(body, /color:\s*#000000/);
 			for (const text of ['Legacy embed title', 'Archived embed description', 'Archive field', 'Archive value', 'Close ticket', 'Discord message', 'Original message text', 'Edit history', '/messages/997372719555412010/attachments/997372719555412011']) {
 				assert.ok(body.includes(text), `Missing archived content: ${text}`);
 			}
