@@ -10,11 +10,20 @@ module.exports.get = fastify => ({
 		const ticket = await client.prisma.ticket.findUnique({
 			include: {
 				archivedChannels: true,
-				archivedMessages: true,
+				archivedMessages: {
+					orderBy: { createdAt: 'asc' },
+					where: { external: false },
+				},
 				archivedRoles: true,
 				archivedUsers: true,
+				category: {
+					select: {
+						id: true,
+						name: true,
+					},
+				},
 				feedback: true,
-				questionAnswers: true,
+				questionAnswers: { include: { question: true } },
 			},
 			where: {
 				guildId, // ! prevent unauthorised access
