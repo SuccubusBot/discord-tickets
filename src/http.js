@@ -5,7 +5,13 @@ const { files } = require('node-dir');
 const { getPrivilegeLevel } = require('./lib/users');
 const { format } = require('util');
 
-process.env.ORIGIN = process.env.HTTP_INTERNAL || process.env.HTTP_EXTERNAL;
+const host = process.env.HTTP_HOST;
+const internalHost = {
+	'::': '::1',
+	'0.0.0.0': '127.0.0.1',
+}[host] || host;
+const originHost = internalHost?.includes(':') ? `[${internalHost}]` : internalHost;
+process.env.ORIGIN = process.env.HTTP_INTERNAL || `http://${originHost}:${process.env.HTTP_PORT}`;
 
 module.exports = async client => {
 	// for file uploads
