@@ -1,6 +1,18 @@
 # syntax=docker/dockerfile:1
 
-FROM oven/bun:1 AS builder
+FROM node:22-alpine3.20 AS portal
+
+# Update this commit when promoting changes from the portal's contrib branch.
+ARG PORTAL_COMMIT=5f14de097e9bcca9fefde4840c273ab6b52b4492
+WORKDIR /portal
+ADD https://codeload.github.com/SuccubusBot/discord-tickets-portal/tar.gz/${PORTAL_COMMIT} /tmp/portal.tar.gz
+RUN tar -xzf /tmp/portal.tar.gz --strip-components=1 \
+	&& npm install --global pnpm@9.15.9 \
+	&& pnpm install --frozen-lockfile \
+	&& pnpm test \
+	&& pnpm build
+
+FROM oven/bun:1.4.2 AS builder
 
 WORKDIR /build
 
@@ -10,6 +22,10 @@ RUN chmod +x ./scripts/start.sh
 COPY package.json bun.lock ./
 
 RUN CI=true bun install --production --frozen-lockfile
+
+RUN rm -rf node_modules/@discord-tickets/settings
+COPY --from=portal /portal/package.json node_modules/@discord-tickets/settings/package.json
+COPY --from=portal /portal/build node_modules/@discord-tickets/settings/build
 
 COPY --link . .
 
@@ -38,6 +54,8 @@ ENV USER=container \
 WORKDIR /home/container
 
 COPY --from=builder --chown=container:container --chmod=777 /build /app
+
+RUN node /app/scripts/check-portal.mjs
 
 ENTRYPOINT [ "/app/scripts/start.sh" ]
 HEALTHCHECK --interval=15s --timeout=5s --start-period=60s \
