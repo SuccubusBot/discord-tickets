@@ -3,7 +3,7 @@
 FROM node:22-alpine3.20 AS portal
 
 # Update this commit when promoting changes from the portal's contrib branch.
-ARG PORTAL_COMMIT=e447fa00f1b74ce31da8a4df51ad40c705472ea2
+ARG PORTAL_COMMIT=41e5a97bed3224c2c8d6e4eb56580ca0e3e292fa
 WORKDIR /portal
 ADD https://codeload.github.com/SuccubusBot/discord-tickets-portal/tar.gz/${PORTAL_COMMIT} /tmp/portal.tar.gz
 RUN tar -xzf /tmp/portal.tar.gz --strip-components=1 \
