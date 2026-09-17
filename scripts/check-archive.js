@@ -1,3 +1,4 @@
+/* eslint-disable max-lines */
 const assert = require('node:assert/strict');
 const fs = require('node:fs/promises');
 const { tmpdir } = require('node:os');
@@ -15,6 +16,9 @@ require.cache[require.resolve('../src/lib/threads')] = {
 					encrypt: value => value,
 				}),
 			},
+		},
+		quickPool: () => {
+			throw new Error('Unexpected background work in archive check');
 		},
 	},
 };
@@ -226,7 +230,13 @@ const message = {
 		})).rawPayload, payload);
 
 		// Audit-log permission failures must not prevent deletion markers.
-		require.cache[require.resolve('../src/lib/logging')] = { exports: { logMessageEvent: async () => {} } };
+		require.cache[require.resolve('../src/lib/logging')] = {
+			exports: {
+				getSUID: () => 'archive-check',
+				logMessageEvent: async () => {},
+				logTicketEvent: () => {},
+			},
+		};
 		const Deleted = require('../src/listeners/client/messageDelete');
 		const BulkDeleted = require('../src/listeners/client/messageDeleteBulk');
 		client.prisma.ticket = {
@@ -247,6 +257,93 @@ const message = {
 		stored.deleted = false;
 		await BulkDeleted.prototype.run.call({ client }, new Map([[messageId, message]]), message.channel);
 		assert.equal(stored.deleted, true);
+
+		// Opening embeds arrive before the ticket row; explicitly archive them after creating it.
+		const TicketManager = require('../src/lib/tickets/manager');
+		const order = [];
+		const creator = {
+			displayAvatarURL: () => 'https://example.com/avatar.png',
+			displayName: 'Test user',
+			id: message.author.id,
+			user: {
+				toString: () => '<@997372719555412012>',
+				username: 'test',
+			},
+		};
+		const opening = {
+			id: messageId,
+			pin: async () => {},
+		};
+		const channel = {
+			id: ticket,
+			messages: { cache: { last: () => [] } },
+			send: async data => {
+				order.push('send');
+				assert.ok(data.embeds.length);
+				assert.ok(data.components.length);
+				return opening;
+			},
+			toString: () => `<#${ticket}>`,
+		};
+		const category = {
+			channelName: 'ticket-{number}',
+			guild: {
+				archive: true,
+				closeButton: true,
+				id: guild,
+				primaryColour: '#5865f2',
+				successColour: '#00aa00',
+				workingHours: ['UTC', ...Array.from({ length: 7 }, () => ['00:00', '23:59'])],
+			},
+			id: 1,
+			name: 'Support',
+			openingMessage: 'Welcome',
+			pingRoles: [],
+			staffRoles: [],
+		};
+		const manager = new TicketManager({
+			guilds: {
+				cache: new Map([[guild, {
+					channels: { create: async () => channel },
+					iconURL: () => null,
+					members: { fetch: async () => creator },
+					roles: { everyone: { id: guild } },
+				}]]),
+			},
+			i18n: { getLocale: () => key => key.endsWith('.emoji') ? '🔒' : key },
+			keyv: { get: async () => null },
+			log: client.log,
+			prisma: {
+				ticket: {
+					create: async () => {
+						order.push('create');
+						return { id: ticket };
+					},
+				},
+			},
+			user: { id: '997372719555412013' },
+		});
+		manager.getCategory = async () => category;
+		manager.getNextNumber = async () => 1;
+		manager.$count.categories[1] = {
+			total: 0,
+			[creator.id]: 0,
+		};
+		manager.archiver.saveMessage = async (id, sent) => {
+			assert.equal(id, ticket);
+			assert.equal(sent, opening);
+			order.push('archive');
+		};
+		await manager.postQuestions({
+			categoryId: 1,
+			interaction: {
+				deferReply: async () => {},
+				editReply: async () => {},
+				isModalSubmit: () => false,
+				user: { id: creator.id },
+			},
+		});
+		assert.deepEqual(order, ['send', 'create', 'archive']);
 
 		const corrupted = await fs.readFile(encryptedPath);
 		corrupted[corrupted.length - 1] ^= 1;

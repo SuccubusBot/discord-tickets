@@ -24,6 +24,23 @@ const ticket = {
 				name: 'evidence.png',
 				url: 'https://cdn.discordapp.com/expired',
 			}],
+			components: [{
+				components: [
+					{
+						custom_id: 'close',
+						label: 'Close ticket',
+						style: 4,
+						type: 2,
+					},
+					{
+						label: 'Discord message',
+						style: 5,
+						type: 2,
+						url: 'https://discord.com/channels/997372719555412008/997372719555412009/997372719555412010',
+					},
+				],
+				type: 1,
+			}],
 			content: 'Updated message',
 			embeds: [{
 				data: {
@@ -169,7 +186,7 @@ try {
 		const number = path.includes('transcripts') ? 1 : path.includes('before=36') ? 35 : path.includes('status=closed') ? 59 : 60;
 		assert.ok(body.includes(`Ticket #${number}`), `${path}: ticket content is missing`);
 		if (path.includes('transcripts')) {
-			for (const text of ['Legacy embed title', 'Archived embed description', 'Archive field', 'Archive value', 'Original message text', 'Edit history', '/messages/997372719555412010/attachments/997372719555412011']) {
+			for (const text of ['Legacy embed title', 'Archived embed description', 'Archive field', 'Archive value', 'Close ticket', 'Discord message', 'Original message text', 'Edit history', '/messages/997372719555412010/attachments/997372719555412011']) {
 				assert.ok(body.includes(text), `Missing archived content: ${text}`);
 			}
 		}

@@ -695,6 +695,8 @@ module.exports = class TicketManager {
 
 		try {
 			const ticket = await this.client.prisma.ticket.create({ data });
+			// The opening message is sent before the ticket exists; save it once its ticket row is available.
+			if (category.guild.archive) await this.archiver.saveMessage(ticket.id, sent);
 			this.$count.categories[categoryId].total++;
 			this.$count.categories[categoryId][creator.id]++;
 
